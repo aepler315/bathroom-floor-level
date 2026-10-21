@@ -54,6 +54,21 @@ class FloorAnalysisTest {
         assertTrue(t.toString(), t.contains("Lowest spot is not a drain"))
         assertTrue(t.toString(), t.any { it.startsWith("Only") })
         assertFalse(a.drainsToDrain(s.index(5, 2)))
+        // Water running out the door is not a "dip that holds water".
+        assertTrue(t.toString(), t.none { it.startsWith("Low spots hold") })
+    }
+
+    @Test
+    fun tiltIsFittedPerPiece() {
+        // Floor falls 1/4 in per ft toward the right wall; a skipped column splits it in two.
+        val s = scanOf(3, 5, listOf(0 to 0)) { _, c -> -0.25 * c }
+        for (r in 0 until 3) {
+            val i = s.index(r, 2)
+            s.riseRight[i] = Double.NaN; s.riseTowardDoor[i] = Double.NaN; s.skipped[i] = true
+        }
+        val a = FloorAnalysis(s)
+        assertEquals(2, a.pieces)
+        assertTrue(titles(a).toString(), titles(a).any { it.contains("toward the right wall") })
     }
 
     @Test

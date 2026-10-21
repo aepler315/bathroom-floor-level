@@ -74,6 +74,20 @@ class PlacementDetectorTest {
     }
 
     @Test
+    fun pauseDuringMeasurementStartsOver() {
+        val d = PlacementDetector()
+        d.expectPlacement()
+        val ev = feed(d, 1200) { resting(0.0) }
+        assertTrue(ev.contains(PlacementDetector.Event.MeasuringStarted))
+        d.abortMeasurement()
+        t += 10_000  // app was paused
+        // The first sample after resuming must not complete the old measurement.
+        assertTrue(feed(d, 100) { resting(0.0) }.none { it is PlacementDetector.Event.Measured })
+        assertEquals(PlacementDetector.Phase.MOVING, d.phase)
+        assertNotNull(feed(d, 3000) { resting(0.0) }.filterIsInstance<PlacementDetector.Event.Measured>().singleOrNull())
+    }
+
+    @Test
     fun tiltedInHandIsNeverMeasured() {
         val d = PlacementDetector()
         d.expectPlacement()

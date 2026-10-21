@@ -29,7 +29,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import kotlin.math.abs
 import kotlin.math.ceil
 
 class MainActivity : Activity(), SensorEventListener {
@@ -70,6 +69,8 @@ class MainActivity : Activity(), SensorEventListener {
         super.onResume()
         accel?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
         rotation?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        // A reading cut short by the pause must start over, not finish with post-resume samples.
+        if (screen == Screen.SCAN) detector.abortMeasurement()
     }
 
     override fun onPause() {
@@ -242,8 +243,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun onMeasured(s: ScanState, e: PlacementDetector.Event.Measured) {
         val wasTurnedReading = s.awaitingTurnedReading
         if (wasTurnedReading && !yawNow.isNaN() && !yawAtFirstReading.isNaN()) {
-            val turn = abs(((yawNow - yawAtFirstReading + 540) % 360) - 180)  // 0 = no turn, 180 = half turn
-            if (turn > 45) {
+            if (!ScanState.isHalfTurn(yawAtFirstReading, yawNow)) {
                 errorTone()
                 refreshScan("That wasn't a half turn. Pick it up and set it down with the top pointing at you.")
                 detector.expectLift()
@@ -351,12 +351,13 @@ class MainActivity : Activity(), SensorEventListener {
             })
         }
         sb.appendLine()
+        sb.appendLine("Per-square data (pond_depth_in is blank where it can't be worked out, e.g. no drain marked):")
         sb.appendLine("row,square,rise_right_in_per_ft,rise_toward_door_in_per_ft,height_in,pond_depth_in,reaches_drain")
         for (i in 0 until s.size) {
             if (!s.isMeasured(i)) continue
-            sb.appendLine("%d,%d,%.3f,%.3f,%.3f,%.3f,%s".format(
+            sb.appendLine("%d,%d,%.3f,%.3f,%.3f,%s,%s".format(
                 s.rowOf(i) + 1, s.colOf(i) + 1, s.riseRight[i], s.riseTowardDoor[i],
-                a.height[i], if (a.pondDepth[i].isNaN()) 0.0 else a.pondDepth[i], a.drainsToDrain(i)))
+                a.height[i], if (a.pondDepth[i].isNaN()) "" else "%.3f".format(a.pondDepth[i]), a.drainsToDrain(i)))
         }
         sb.appendLine()
         sb.appendLine("Measured with a phone accelerometer, calibrated by a 180° turn on the first square. " +

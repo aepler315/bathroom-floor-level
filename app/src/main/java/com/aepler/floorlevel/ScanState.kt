@@ -141,6 +141,12 @@ class ScanState(val rows: Int, val cols: Int) {
     }.toString()
 
     companion object {
+        /** True if the heading changed by roughly 180 degrees (within 45) between two readings. */
+        fun isHalfTurn(fromDeg: Double, toDeg: Double): Boolean {
+            val change = kotlin.math.abs(((toDeg - fromDeg) % 360 + 540) % 360 - 180)  // 0..180
+            return change >= 135
+        }
+
         private fun numbers(a: DoubleArray) = JSONArray().apply { a.forEach { put(nullable(it)) } }
         private fun nullable(d: Double): Any = if (d.isNaN()) JSONObject.NULL else d
         private fun JSONObject.dbl(k: String) = if (isNull(k)) Double.NaN else getDouble(k)

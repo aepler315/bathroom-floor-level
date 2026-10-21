@@ -24,12 +24,15 @@ class FloorAnalysis(private val scan: ScanState) {
     /** For each square, the square its water finally stops in (-1 if unknown). */
     val endsAt = IntArray(n) { -1 }
 
-    /** How deep water must stand here before it can spill toward a drain (inches). */
+    /** How deep water must stand here before it can spill to a drain or out the door (inches). */
     val pondDepth = DoubleArray(n) { Double.NaN }
 
     /** Number of separate measured pieces of floor (skipped squares can split it). */
     var pieces = 0
         private set
+
+    /** Which piece each square belongs to (-1 if it has no height). */
+    private val pieceOf = IntArray(n) { -1 }
 
     data class Finding(val severity: Severity, val title: String, val detail: String)
 
@@ -79,7 +82,7 @@ class FloorAnalysis(private val scan: ScanState) {
         }
 
         // Each connected piece gets its own zero: its lowest drain, else its lowest square.
-        val piece = IntArray(n) { -1 }
+        val piece = pieceOf
         for (start in 0 until n) {
             if (!measured[start] || degree[start] == 0 || piece[start] >= 0) continue
             val members = mutableListOf(start)
@@ -121,14 +124,19 @@ class FloorAnalysis(private val scan: ScanState) {
         }
     }
 
-    /** "Priority flood": the water level each square must reach before it can spill to a drain. */
+    /**
+     * "Priority flood": the water level each square must reach before it can spill
+     * to a drain. The door row also counts as a way out: water there runs out of
+     * the room rather than standing (the drainage finding reports it separately).
+     */
     private fun floodFromDrains() {
         val level = DoubleArray(n) { Double.NaN }
         val queue = PriorityQueue<Pair<Double, Int>>(compareBy { it.first })
-        for (d in scan.drains) {
-            if (height[d].isNaN()) continue
-            level[d] = height[d]
-            queue.add(height[d] to d)
+        val doorRow = (0 until cols).map { scan.index(rows - 1, it) }
+        for (o in scan.drains + doorRow) {
+            if (height[o].isNaN() || !level[o].isNaN()) continue
+            level[o] = height[o]
+            queue.add(height[o] to o)
         }
         while (queue.isNotEmpty()) {
             val (lv, i) = queue.poll()!!
@@ -241,27 +249,31 @@ class FloorAnalysis(private val scan: ScanState) {
             }
             out += Finding(if (total >= 0.5) Severity.PROBLEM else Severity.WARNING,
                 "Low spots hold about ${"%.1f".format(total)} gallons",
-                "Before it can reach a drain, water has to fill these dips: $list. They refill every " +
+                "Before it can reach a drain or the door, water has to fill these dips: $list. They refill every " +
                     "shower. (Rough number: 1 ft squares miss small dips and humps.)")
         }
 
         // 5. Whole floor tilted one way.
-        planeFit(known)?.let { (a, b, r2) ->
+        // Heights in different pieces have unrelated zeros, so fit only the biggest piece.
+        val mainPiece = known.groupBy { pieceOf[it] }.values.maxByOrNull { it.size } ?: emptyList()
+        planeFit(mainPiece)?.let { (a, b, r2) ->
             val mag = hypot(a, b)
             if (mag >= 0.08 && r2 >= 0.5) {
                 val toward = direction(-a, -b)
                 val plane = { i: Int -> a * scan.colOf(i) + b * scan.rowOf(i) }
-                val lo = known.minOf(plane)
-                val range = known.maxOf(plane) - lo
-                val drainsLow = drains.isNotEmpty() && drains.all { plane(it) - lo <= 0.3 * range }
-                if (!drainsLow && drains.isNotEmpty()) {
+                val lo = mainPiece.minOf(plane)
+                val range = mainPiece.maxOf(plane) - lo
+                val pieceDrains = drains.filter { it in mainPiece }
+                val drainsLow = pieceDrains.isNotEmpty() && pieceDrains.all { plane(it) - lo <= 0.3 * range }
+                if (!drainsLow && pieceDrains.isNotEmpty()) {
                     out += Finding(Severity.PROBLEM, "Whole floor tilts toward $toward",
                         "Overall the floor drops about ${slope(mag)} toward $toward, not toward the " +
                             "drains, so it behaves like one tilted slab. This usually means the floor " +
                             "underneath (mortar bed or subfloor) was set to the wrong slope or was meant to be level.")
                 } else {
                     out += Finding(Severity.INFO, "Overall tilt: ${slope(mag)} toward $toward",
-                        "The floor as a whole leans toward $toward.")
+                        if (pieces > 1) "The largest measured piece of floor leans toward $toward."
+                        else "The floor as a whole leans toward $toward.")
                 }
             }
         }
