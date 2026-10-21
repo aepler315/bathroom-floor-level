@@ -73,6 +73,14 @@ class PlacementDetector(
         window.clear()
     }
 
+    /** Throw away a measurement in progress (e.g. the app was paused); wait for stillness again. */
+    fun abortMeasurement() {
+        if (phase == Phase.MEASURING) {
+            phase = Phase.MOVING
+            window.clear()
+        }
+    }
+
     fun onSample(tMs: Long, x: Double, y: Double, z: Double): Event? {
         if (!lpReady) {
             lpX = x; lpY = y; lpZ = z; lpReady = true

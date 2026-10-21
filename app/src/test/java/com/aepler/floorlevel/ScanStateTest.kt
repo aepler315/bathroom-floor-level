@@ -55,6 +55,16 @@ class ScanStateTest {
     }
 
     @Test
+    fun halfTurnCheck() {
+        assertTrue(ScanState.isHalfTurn(10.0, -170.0))
+        assertTrue(ScanState.isHalfTurn(90.0, -90.0))
+        assertTrue(ScanState.isHalfTurn(-30.0, 140.0))   // 170 degrees, close enough
+        assertFalse(ScanState.isHalfTurn(10.0, 15.0))     // not turned
+        assertFalse(ScanState.isHalfTurn(170.0, -175.0))  // 15 degrees across the +/-180 seam
+        assertFalse(ScanState.isHalfTurn(0.0, 90.0))      // quarter turn
+    }
+
+    @Test
     fun jsonRoundTrip() {
         val s = ScanState(2, 3)
         s.record(0.1, 0.2, g); s.record(-0.1, -0.2, g); s.skip(); s.record(0.3, 0.0, g)
